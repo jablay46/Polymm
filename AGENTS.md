@@ -42,6 +42,8 @@ src/polymm/chain/
   signing.py                 # EIP-712 order + L1/L2 headers (DONE)
 src/polymm/data/decoder.py   # OrderFilled log -> Trade (DONE)
 src/polymm/pricing.py        # Decimal book walk + fee model (DONE)
+src/polymm/market.py         # OrderBook model, always sorted (DONE)
+src/polymm/risk.py           # caps + kill switch (DONE)
 tests/                       # conftest.py has synthetic Book/Level fixtures
 ```
 
@@ -115,7 +117,7 @@ bands, and fill realism only exist on mainnet (backtest/paper instead).
 
 ## Progress
 
-Done: 0.1, 0.2, 0.3, 0.4, 0.5.1–0.5.6.
-Next: 0.5.7 (risk caps), then 0.5.8–0.5.16.
+Done: 0.1, 0.2, 0.3, 0.4, 0.5.1–0.5.8.
+Next: 0.5.9 (exchange client wrapper), then 0.5.10–0.5.16.
 
 See the conversation task tracker for the full 45-task plan.
