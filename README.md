@@ -140,3 +140,7 @@ backtests and paper trading instead.
 
 Educational/research software. Trading prediction markets carries real
 financial risk. Validate with paper mode before committing capital.
+
+## License
+
+[MIT](LICENSE) © 2026 jablay46
