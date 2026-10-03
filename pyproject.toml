@@ -22,9 +22,13 @@ dependencies = [
 [project.optional-dependencies]
 # Wallet / order signing. Kept optional so unit tests (tiers 1-2) run
 # without any crypto stack or credentials installed.
+# Directly imported by polymm.chain.signing — declared explicitly even
+# though py-clob-client pulls them in transitively.
 chain = [
-    "web3>=6.0",
     "eth-account>=0.11",
+    "eth-utils>=2.3",
+    "poly-eip712-structs>=0.0.1",
+    "py-order-utils>=0.3",
     "py-clob-client>=0.17",
 ]
 dev = [

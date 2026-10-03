@@ -23,7 +23,7 @@ Target bankroll $200–$500. Built incrementally; the bot cannot trade yet.
 ## Commands
 
 ```bash
-uv venv && uv pip install -e ".[dev]" types-PyYAML
+uv venv && uv pip install -e ".[dev,chain]" types-PyYAML
 uv run pytest                 # tiers 1+2 (default; no secrets)
 uv run pytest --cov           # coverage gate is 90%
 uv run ruff check . && uv run ruff format --check .
@@ -34,10 +34,37 @@ uv run pytest -m "testnet"    # needs POLYMM_TESTNET_PRIVATE_KEY
 ## Layout
 
 ```
-src/polymm/config.py    # validated config + safety gates (DONE)
-src/polymm/logging.py   # mandatory secret redaction (DONE)
-tests/                  # conftest.py has synthetic Book/Level fixtures
+src/polymm/config.py         # validated config + safety gates (DONE)
+src/polymm/logging.py        # mandatory secret redaction (DONE)
+src/polymm/chain/
+  constants.py               # mainnet/Amoy addresses, EIP-712 type (DONE)
+  wallet.py                  # hot wallet, EOA vs proxy detection (DONE)
+  signing.py                 # EIP-712 order + L1/L2 headers (DONE)
+tests/                       # conftest.py has synthetic Book/Level fixtures
 ```
+
+## Facts verified against the official py-clob-client
+
+Do not "improve" these from memory — they are checked against
+`py_order_utils` / `py_clob_client` source:
+
+- Order type hash `0xa852566c…767c`. `side` and `signatureType` are **uint8**,
+  not uint256. Field order: salt, maker, signer, taker, tokenId,
+  makerAmount, takerAmount, expiration, nonce, feeRateBps, side,
+  signatureType.
+- Sides are numeric: BUY=0, SELL=1 (the builder's `"BUY"`/`"SELL"` strings
+  are only for the REST payload).
+- Signature types: EOA=0, POLY_PROXY=1, POLY_GNOSIS_SAFE=2.
+- CTF Exchange domain is `"Polymarket CTF Exchange"` v`"1"`; ClobAuth domain
+  is `"ClobAuthDomain"` v`"1"` with no verifying contract.
+- L2 HMAC payload = `timestamp + METHOD + path + body`, body single quotes
+  replaced with double quotes, keyed by **base64-decoded** api_secret,
+  returned base64url.
+- Amoy neg-risk exchange is `0xd91E80cF…296`, distinct from the regular one.
+- `round()` is banker's rounding: `round_normal(0.125, 2) == 0.12`.
+
+`tests/test_signing_reference.py` asserts our signed order is **byte-identical**
+to `py_order_utils`' output on both chains. Keep that test passing.
 
 ## Test tiers
 
@@ -81,7 +108,7 @@ bands, and fill realism only exist on mainnet (backtest/paper instead).
 
 ## Progress
 
-Done: 0.1, 0.3, 0.4, 0.5.1, 0.5.2, 0.5.3.
-Next: 0.2 (wallet/credential architecture), then 0.5.4–0.5.16.
+Done: 0.1, 0.2, 0.3, 0.4, 0.5.1–0.5.4.
+Next: 0.5.5 (OrderFilled decoder), then 0.5.6–0.5.16.
 
 See the conversation task tracker for the full 45-task plan.
