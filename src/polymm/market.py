@@ -127,3 +127,30 @@ class OrderBook:
         for level in self.levels_for(side)[:levels]:
             total += level.price * level.size
         return total
+
+
+@dataclass(frozen=True)
+class Market:
+    """A binary market: two complementary outcome tokens.
+
+    One YES share plus one NO share always settles to exactly 1.00 USDC,
+    which is the invariant the complete-set arbitrage relies on.
+    """
+
+    condition_id: str
+    yes_token_id: str
+    no_token_id: str
+    question: str = ""
+    neg_risk: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.condition_id:
+            raise PricingError("market needs a condition_id")
+        if not self.yes_token_id or not self.no_token_id:
+            raise PricingError("market needs both yes and no token ids")
+        if self.yes_token_id == self.no_token_id:
+            raise PricingError("yes and no token ids must differ")
+
+    @property
+    def token_ids(self) -> tuple[str, str]:
+        return (self.yes_token_id, self.no_token_id)
