@@ -40,6 +40,7 @@ src/polymm/chain/
   constants.py               # mainnet/Amoy addresses, EIP-712 type (DONE)
   wallet.py                  # hot wallet, EOA vs proxy detection (DONE)
   signing.py                 # EIP-712 order + L1/L2 headers (DONE)
+src/polymm/data/decoder.py   # OrderFilled log -> Trade (DONE)
 tests/                       # conftest.py has synthetic Book/Level fixtures
 ```
 
@@ -62,6 +63,9 @@ Do not "improve" these from memory — they are checked against
   returned base64url.
 - Amoy neg-risk exchange is `0xd91E80cF…296`, distinct from the regular one.
 - `round()` is banker's rounding: `round_normal(0.125, 2) == 0.12`.
+- OrderFilled has **three indexed params** -> 4 topics:
+  `[sig, orderHash, maker, taker]`. Topic0 = `0x91105c38…706d`.
+  USDC asset id is 0; amounts are 6-decimal.
 
 `tests/test_signing_reference.py` asserts our signed order is **byte-identical**
 to `py_order_utils`' output on both chains. Keep that test passing.
@@ -108,7 +112,7 @@ bands, and fill realism only exist on mainnet (backtest/paper instead).
 
 ## Progress
 
-Done: 0.1, 0.2, 0.3, 0.4, 0.5.1–0.5.4.
-Next: 0.5.5 (OrderFilled decoder), then 0.5.6–0.5.16.
+Done: 0.1, 0.2, 0.3, 0.4, 0.5.1–0.5.5.
+Next: 0.5.6 (book-walk sizing + fee math), then 0.5.7–0.5.16.
 
 See the conversation task tracker for the full 45-task plan.
