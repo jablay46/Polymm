@@ -20,6 +20,14 @@ paper path are implemented and tested; live signing is untested on mainnet.
 4. **Every module ships with its unit test.** A module is not "done" until
    its tier-1 tests exist and pass.
 5. **No network or credentials in tier-1/2 tests.** They must run on a fork.
+6. **Gitignore patterns must be root-anchored.** `data/`, `logs/`, `state/`
+   are written as `/data/` etc. An unanchored `data/` also matches
+   `src/polymm/data/` and silently drops the source package from git.
+   Before committing, confirm `git ls-files src/polymm | wc -l` matches the
+   number of modules on disk.
+7. **CI installs only `.[dev]`.** The `chain` extra is optional, so mypy and
+   pytest must pass with it absent (chain-only imports are `importorskip`'d
+   or lazily imported). Keep `[tool.mypy.overrides]` in sync.
 
 ## Commands
 
