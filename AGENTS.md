@@ -44,6 +44,8 @@ src/polymm/data/decoder.py   # OrderFilled log -> Trade (DONE)
 src/polymm/pricing.py        # Decimal book walk + fee model (DONE)
 src/polymm/market.py         # OrderBook model, always sorted (DONE)
 src/polymm/risk.py           # caps + kill switch (DONE)
+src/polymm/exchange.py       # Exchange protocol + live CLOB adapter (DONE)
+src/polymm/paper.py          # in-memory paper venue (DONE)
 tests/                       # conftest.py has synthetic Book/Level fixtures
 ```
 
@@ -117,7 +119,7 @@ bands, and fill realism only exist on mainnet (backtest/paper instead).
 
 ## Progress
 
-Done: 0.1, 0.2, 0.3, 0.4, 0.5.1–0.5.8.
-Next: 0.5.9 (exchange client wrapper), then 0.5.10–0.5.16.
+Done: 0.1, 0.2, 0.3, 0.4, 0.5.1–0.5.10.
+Next: 0.5.11 (complete-set arbitrage strategy), then 0.5.12–0.5.16.
 
 See the conversation task tracker for the full 45-task plan.
