@@ -1,0 +1,66 @@
+# polymm — example configuration.
+#
+# Copy to config.yaml and edit. This file is COMMITTED and must never
+# contain a private key, API secret, or passphrase. Secrets live only in
+# the environment (see .env.example) or a secret manager.
+
+# ── Trading gates ─────────────────────────────────────────────
+# Live orders require BOTH flags to be explicitly permissive:
+#   enable_trading: true  AND  mock_trading: false
+# Anything else keeps the bot in dry-run. Defaults below are safe.
+bot:
+  enable_trading: false      # master switch — leave false until Fase 7
+  mock_trading: true         # when true, orders are built+logged, never sent
+  wallets_to_track: []       # copy-trading watchlist (unused in MVP)
+
+# ── Endpoints ─────────────────────────────────────────────────
+site:
+  gamma_api_base: "https://gamma-api.polymarket.com"
+  clob_api_base: "https://clob.polymarket.com"
+  polygon_ws_url: "wss://polygon-rpc.com"
+  # Testnet (Polygon Amoy). Contract addresses differ from mainnet —
+  # see config_testnet.example.yaml before pointing here.
+  testnet:
+    enabled: false
+    chain_id: 80002
+
+# ── Chain / exchange ──────────────────────────────────────────
+exchange:
+  chain_id: 137
+  ctf_exchange_address: "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E"
+  neg_risk_exchange_address: "0xC5d563A36AE78145C45a50134d48A1215220f80a"
+  domain_name: "Polymarket CTF Exchange"
+  domain_version: "1"
+
+# ── Sizing / risk (small-capital defaults) ────────────────────
+risk:
+  # All caps are FRACTIONS of the effective bankroll, so the bot scales
+  # down automatically on a small account.
+  max_order_bankroll_fraction: 0.05     # <= 5% of bankroll per order
+  max_total_bankroll_fraction: 0.50     # <= 50% total exposure
+  max_open_positions: 4
+  min_bankroll_usd: 50.0                # circuit-breaker floor
+  daily_loss_limit_usd: 25.0
+  large_trade_shares: 1000.0            # risk-guard threshold
+  consecutive_trigger: 3
+  sequence_window_secs: 30
+  min_depth_usd: 200.0
+  trip_duration_secs: 60
+
+strategy:
+  # Complete-set arbitrage entry gate.
+  complete_set_min_edge: 0.01           # >= 1c net of fees
+  max_basket_cost: 0.99
+  improve_ticks: 1
+  max_skew_ticks: 1
+  imbalance_shares_for_max_skew: 200.0
+  # Reward-band liquidity overlay.
+  reward_band_enabled: true
+  taker_mode_enabled: false
+  min_replace_ticks: 1
+
+# ── Logging ───────────────────────────────────────────────────
+logging:
+  level: "INFO"
+  # Redaction is always on and not configurable — secrets must never
+  # reach a log sink.

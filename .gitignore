@@ -1,0 +1,71 @@
+# ─────────────────────────────────────────────────────────────
+# SECRETS — never commit. A leaked key cannot be un-leaked.
+# ─────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.keystore
+secrets/
+secret/
+credentials/
+config.yaml
+config.local.yaml
+*_secret*
+*_credentials*
+id_rsa*
+id_ed25519*
+
+# ─────────────────────────────────────────────────────────────
+# Runtime state & trading data (positions, orders, PnL)
+# ─────────────────────────────────────────────────────────────
+state/
+data/
+logs/
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.parquet
+*.jsonl
+
+# ─────────────────────────────────────────────────────────────
+# Python
+# ─────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+.python-version
+
+# ─────────────────────────────────────────────────────────────
+# Tooling caches
+# ─────────────────────────────────────────────────────────────
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+
+# ─────────────────────────────────────────────────────────────
+# Editors / OS
+# ─────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

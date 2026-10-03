@@ -1,0 +1,92 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "polymm"
+version = "0.1.0"
+description = "Polymarket market-making + complete-set arbitrage bot (safety-first, small-capital)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "polymm" }]
+
+# Runtime dependencies are intentionally minimal: nothing here touches
+# a wallet or the network at import time.
+dependencies = [
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+# Wallet / order signing. Kept optional so unit tests (tiers 1-2) run
+# without any crypto stack or credentials installed.
+chain = [
+    "web3>=6.0",
+    "eth-account>=0.11",
+    "py-clob-client>=0.17",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+    "mypy>=1.10",
+    "pre-commit>=3.7",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/polymm"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+# testnet/e2e never run by default — they need credentials and network.
+addopts = "-ra --strict-markers --strict-config -m 'not testnet and not e2e'"
+markers = [
+    "unit: no network, no credentials (default tier)",
+    "integration: uses a mock CLOB server",
+    "testnet: hits Polymarket Amoy (chain 80002); requires AMOY_PK",
+    "e2e: full pipeline dry-run against live data",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["polymm"]
+omit = ["*/__main__.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+# Safety-critical modules must not regress below full coverage.
+fail_under = 90
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "B",        # bugbear
+    "UP",       # pyupgrade
+    "S",        # bandit (security)
+    "T20",      # no print()
+    "SIM",      # simplify
+]
+ignore = [
+    "S101",  # assert — fine in tests and internal invariants
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106"]  # dummy secrets in tests are intentional
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = true
+files = ["src/polymm"]

@@ -1,0 +1,14 @@
+# gitleaks configuration.
+#
+# The test suite intentionally contains *fake* keys (e.g. "0x" + "ab"*32)
+# to prove the redactor works. Those are not real secrets, so they are
+# allowlisted — but only inside tests/. Everything else is scanned.
+
+title = "polymm"
+
+[allowlist]
+description = "Dummy secrets used in tests and empty example files"
+paths = [
+  '''tests/.*''',
+  '''\.env\.example''',
+]
