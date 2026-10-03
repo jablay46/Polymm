@@ -105,6 +105,6 @@ def get_contract_config(chain_id: int, neg_risk: bool = False) -> ContractConfig
 
 def order_type_hash() -> bytes:
     """Keccak-256 of the canonical Order type string."""
-    from eth_utils import keccak  # type: ignore[attr-defined]
+    from eth_utils import keccak
 
-    return keccak(text=ORDER_TYPE_STRING)
+    return bytes(keccak(text=ORDER_TYPE_STRING))

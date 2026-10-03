@@ -252,8 +252,8 @@ def _order_types() -> list[dict[str, str]]:
 
 def hash_order(*, order: dict[str, Any], chain_id: int, verifying_contract: str) -> str:
     """EIP-712 struct hash of an order (hex, 0x-prefixed)."""
-    from eth_utils import keccak  # type: ignore[attr-defined]
-    from poly_eip712_structs import (  # type: ignore[import-untyped]
+    from eth_utils import keccak
+    from poly_eip712_structs import (
         Address,
         EIP712Struct,
         Uint,
@@ -280,7 +280,8 @@ def hash_order(*, order: dict[str, Any], chain_id: int, verifying_contract: str)
         "verifyingContract": verifying_contract,
     }
     struct = _Order(**order)
-    return "0x" + keccak(struct.signable_bytes(domain)).hex()
+    digest = bytes(keccak(struct.signable_bytes(domain)))
+    return "0x" + digest.hex()
 
 
 def sign_clob_auth(private_key: str, chain_id: int, timestamp: int, nonce: int = 0) -> str:

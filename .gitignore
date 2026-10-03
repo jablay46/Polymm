@@ -20,10 +20,12 @@ id_ed25519*
 
 # ─────────────────────────────────────────────────────────────
 # Runtime state & trading data (positions, orders, PnL)
+# Root-anchored (/data/, /logs/, /state/) so they never shadow source
+# packages like src/polymm/data/.
 # ─────────────────────────────────────────────────────────────
-state/
-data/
-logs/
+/state/
+/data/
+/logs/
 *.sqlite
 *.sqlite3
 *.db

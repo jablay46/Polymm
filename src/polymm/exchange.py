@@ -87,12 +87,12 @@ class ClobExchange:
         return OrderBook.from_clob(summary)
 
     def place_order(self, request: OrderRequest) -> OrderResult:
-        from py_clob_client.clob_types import (  # type: ignore[import-untyped]
+        from py_clob_client.clob_types import (
             OrderArgs,
             OrderType,
             PartialCreateOrderOptions,
         )
-        from py_clob_client.order_builder.constants import (  # type: ignore[import-untyped]
+        from py_clob_client.order_builder.constants import (
             BUY,
             SELL,
         )

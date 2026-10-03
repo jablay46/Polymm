@@ -46,6 +46,36 @@ def test_parse_market_basic() -> None:
 def test_parse_market_handles_real_lists_too() -> None:
     m = parse_market(raw_market(clobTokenIds=["111", "222"]))
     assert m.yes_token_id == "111"
+    assert m.no_token_id == "222"
+
+
+def test_parse_market_maps_labels_not_positions() -> None:
+    # A market that reports No first must not be mislabelled.
+    m = parse_market(
+        raw_market(
+            clobTokenIds=json.dumps(["222", "111"]),
+            outcomes=json.dumps(["No", "Yes"]),
+        )
+    )
+    assert m.yes_token_id == "111"
+    assert m.no_token_id == "222"
+
+
+def test_parse_market_yes_no_labels_keep_order() -> None:
+    m = parse_market(
+        raw_market(
+            clobTokenIds=json.dumps(["111", "222"]),
+            outcomes=json.dumps(["Yes", "No"]),
+        )
+    )
+    assert m.yes_token_id == "111"
+    assert m.no_token_id == "222"
+
+
+def test_parse_market_unknown_labels_fall_back_to_order() -> None:
+    m = parse_market(raw_market(outcomes=json.dumps(["Up", "Down"])))
+    assert m.yes_token_id == "111"
+    assert m.no_token_id == "222"
 
 
 def test_parse_market_neg_risk_flag() -> None:

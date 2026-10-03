@@ -92,8 +92,30 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S105", "S106"]  # dummy secrets in tests are intentional
 
+[tool.ruff.lint.isort]
+# Pin the first-party package explicitly. Without this, isort's
+# "detect same package" guess depends on the checkout path and produces
+# different import grouping in CI than locally.
+known-first-party = ["polymm"]
+
 [tool.mypy]
 python_version = "3.11"
 strict = true
 warn_unreachable = true
 files = ["src/polymm"]
+
+# The wallet/signing dependencies are an *optional* extra. CI checks mypy
+# without them installed, so their modules are unresolvable by design; the
+# local ignore comments on the imports only fire when the stubs are absent.
+[[tool.mypy.overrides]]
+module = [
+    "eth_account.*",
+    "eth_utils",
+    "poly_eip712_structs.*",
+    "py_clob_client.*",
+]
+ignore_missing_imports = true
+# With the extra installed these libs are found but do not re-export every
+# symbol; without it they are `Any`. Disabling implicit-reexport checks makes
+# the same source type-check cleanly in both cases (no conditional ignores).
+no_implicit_reexport = false
