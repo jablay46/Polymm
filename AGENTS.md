@@ -46,6 +46,8 @@ src/polymm/market.py         # OrderBook model, always sorted (DONE)
 src/polymm/risk.py           # caps + kill switch (DONE)
 src/polymm/exchange.py       # Exchange protocol + live CLOB adapter (DONE)
 src/polymm/paper.py          # in-memory paper venue (DONE)
+src/polymm/strategy.py       # complete-set arb strategy (DONE)
+src/polymm/execution.py      # two-leg executor + unwind (DONE)
 tests/                       # conftest.py has synthetic Book/Level fixtures
 ```
 
@@ -119,7 +121,7 @@ bands, and fill realism only exist on mainnet (backtest/paper instead).
 
 ## Progress
 
-Done: 0.1, 0.2, 0.3, 0.4, 0.5.1–0.5.10.
-Next: 0.5.11 (complete-set arbitrage strategy), then 0.5.12–0.5.16.
+Done: 0.1, 0.2, 0.3, 0.4, 0.5.1–0.5.12.
+Next: 0.5.13 (runner loop + paper entrypoint), then 0.5.14–0.5.16.
 
 See the conversation task tracker for the full 45-task plan.
