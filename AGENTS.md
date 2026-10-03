@@ -50,6 +50,7 @@ src/polymm/strategy.py       # complete-set arb strategy (DONE)
 src/polymm/execution.py      # two-leg executor + unwind (DONE)
 src/polymm/runner.py         # scan loop (DONE)
 src/polymm/paper_run.py      # runnable paper path (DONE)
+src/polymm/data/gamma.py     # market discovery (Gamma) (DONE)
 tests/                       # conftest.py has synthetic Book/Level fixtures
 ```
 
@@ -123,7 +124,7 @@ bands, and fill realism only exist on mainnet (backtest/paper instead).
 
 ## Progress
 
-Done: 0.1, 0.2, 0.3, 0.4, 0.5.1–0.5.13.
-Next: 0.5.14 (data fetcher), then 0.5.15–0.5.16.
+Done: 0.1, 0.2, 0.3, 0.4, 0.5.1–0.5.14.
+Next: 0.5.15 (logging/safety polish), then 0.5.16 (docs + runbook).
 
 See the conversation task tracker for the full 45-task plan.
