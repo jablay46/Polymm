@@ -6,7 +6,8 @@ Repository memory for agent sessions. Read this first.
 
 A safety-first Polymarket bot: **market making + complete-set arbitrage**
 on short-horizon crypto Up/Down markets, with a liquidity-reward overlay.
-Target bankroll $200–$500. Built incrementally; the bot cannot trade yet.
+Target bankroll $200–$500. Strategy, execution, risk, and the runnable
+paper path are implemented and tested; live signing is untested on mainnet.
 
 ## Hard rules (do not violate)
 
@@ -51,6 +52,8 @@ src/polymm/execution.py      # two-leg executor + unwind (DONE)
 src/polymm/runner.py         # scan loop (DONE)
 src/polymm/paper_run.py      # runnable paper path (DONE)
 src/polymm/data/gamma.py     # market discovery (Gamma) (DONE)
+src/polymm/preflight.py      # fail-closed live checks (DONE)
+src/polymm/cli.py            # `polymm` entrypoint (DONE)
 tests/                       # conftest.py has synthetic Book/Level fixtures
 ```
 
@@ -124,7 +127,8 @@ bands, and fill realism only exist on mainnet (backtest/paper instead).
 
 ## Progress
 
-Done: 0.1, 0.2, 0.3, 0.4, 0.5.1–0.5.14.
-Next: 0.5.15 (logging/safety polish), then 0.5.16 (docs + runbook).
+Done: 0.1, 0.2, 0.3, 0.4, 0.5.1–0.5.16. Phase 0.5 complete.
+Runnable: `uv run python -m polymm paper --cycles 3` and
+`uv run python -m polymm preflight <config>`.
 
 See the conversation task tracker for the full 45-task plan.
