@@ -21,8 +21,10 @@ pytestmark = pytest.mark.unit
 def base_config(**overrides) -> Config:
     exchange = ExchangeConfig(
         chain_id=137,
-        ctf_exchange_address="0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E",
-        neg_risk_exchange_address="0xC5d563A36AE78145C45a50134d48A1215220f80a",
+        # V2 exchange + neg-risk exchange (live since 2026-04-28).
+        ctf_exchange_address="0xe111180000d2663c0091e4f400237545b87b996b",
+        neg_risk_exchange_address="0xe2222d279d744050d28e00520010520000310f59",
+        domain_version="2",
     )
     kwargs: dict = {
         "bot": BotConfig(enable_trading=True, mock_trading=False),
@@ -49,6 +51,31 @@ def test_trading_disabled_is_error() -> None:
     report = preflight(base_config(bot=BotConfig(enable_trading=False, mock_trading=False)))
     assert not report.ok
     assert "trading_disabled" in codes(report)
+
+
+def test_v1_signing_is_a_hard_stop_for_live() -> None:
+    """V1 was retired 2026-04-28; a V1 config must never trade live."""
+    v1 = ExchangeConfig(
+        chain_id=137,
+        ctf_exchange_address="0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E",
+        neg_risk_exchange_address="0xC5d563A36AE78145C45a50134d48A1215220f80a",
+        domain_version="1",
+    )
+    report = preflight(base_config(exchange=v1))
+    assert not report.ok
+    assert "clob_v1_protocol" in codes(report)
+
+
+def test_mismatched_exchange_address_is_error() -> None:
+    bad = ExchangeConfig(
+        chain_id=137,
+        ctf_exchange_address="0x1111111111111111111111111111111111111111",
+        neg_risk_exchange_address="0xC5d563A36AE78145C45a50134d48A1215220f80a",
+        domain_version="2",
+    )
+    report = preflight(base_config(exchange=bad))
+    assert not report.ok
+    assert "exchange_address_mismatch" in codes(report)
 
 
 def test_mock_enabled_is_error() -> None:

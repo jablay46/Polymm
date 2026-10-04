@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from polymm.chain.constants import SIG_TYPE_EOA, SIG_TYPE_POLY_PROXY
+from polymm.chain.constants import (
+    SIG_TYPE_EOA,
+    SIG_TYPE_POLY_GNOSIS_SAFE,
+    SIG_TYPE_POLY_PROXY,
+)
 from polymm.chain.wallet import (
     WalletError,
     build_wallet,
@@ -74,10 +78,25 @@ def test_proxy_when_funder_differs() -> None:
     w = build_wallet(
         Credentials(private_key=KEY, funder_address=PROXY),
         address_of=_address_of,
+        funder_type="proxy",
     )
     assert w.funder == PROXY
     assert w.signature_type == SIG_TYPE_POLY_PROXY
     assert w.is_proxy is True
+
+
+def test_safe_when_funder_type_safe() -> None:
+    w = build_wallet(
+        Credentials(private_key=KEY, funder_address=PROXY),
+        address_of=_address_of,
+        funder_type="safe",
+    )
+    assert w.signature_type == SIG_TYPE_POLY_GNOSIS_SAFE
+
+
+def test_distinct_funder_without_type_raises() -> None:
+    with pytest.raises(WalletError, match="funder_type"):
+        build_wallet(Credentials(private_key=KEY, funder_address=PROXY), address_of=_address_of)
 
 
 # ── fail-closed ───────────────────────────────────────────────

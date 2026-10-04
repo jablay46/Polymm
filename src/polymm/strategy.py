@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from polymm.market import Market, OrderBook
-from polymm.pricing import fee_per_share, walk_book
+from polymm.pricing import BookWalk, fee_per_share, walk_book
 
 ZERO = Decimal("0")
 ONE = Decimal("1")
@@ -65,14 +65,19 @@ class ArbIntent:
         return self.legs[1]
 
 
-def _avg_buy_price(book: OrderBook, size: Decimal) -> Decimal | None:
-    """Volume-weighted ask price to buy ``size`` shares, or None if too thin."""
+def _buy_walk(book: OrderBook, size: Decimal) -> BookWalk | None:
+    """Walk the asks to buy ``size`` shares, or None if the book is too thin.
+
+    The returned walk carries ``worst_price`` (the deepest level touched),
+    which is the correct *limit* price: a limit set to the average would not
+    reach the deepest level and the order could not fully fill.
+    """
     if size <= ZERO or not book.asks:
         return None
     walk = walk_book(list(book.asks), size)
     if walk.filled < size:
         return None
-    return walk.avg_price
+    return walk
 
 
 def evaluate_market(
@@ -113,11 +118,13 @@ def evaluate_market(
     if size <= ZERO:
         return None
 
-    yes_avg = _avg_buy_price(yes_book, size)
-    no_avg = _avg_buy_price(no_book, size)
-    if yes_avg is None or no_avg is None:
+    yes_walk = _buy_walk(yes_book, size)
+    no_walk = _buy_walk(no_book, size)
+    if yes_walk is None or no_walk is None:
         return None
 
+    yes_avg = yes_walk.avg_price
+    no_avg = no_walk.avg_price
     gross = yes_avg + no_avg
     net = gross + fee_per_share(yes_avg, config.fee_rate) + fee_per_share(no_avg, config.fee_rate)
 
@@ -127,11 +134,24 @@ def evaluate_market(
     if edge_per_share < config.min_edge:
         return None
 
+    # The limit is the worst (deepest) level the walk touched, not the
+    # average: an FOK at the average cannot reach the deepest level and
+    # would never fully fill on a multi-level book.
     return ArbIntent(
         market=market,
         legs=(
-            ArbLeg(token_id=market.yes_token_id, side="BUY", price=yes_avg, size=size),
-            ArbLeg(token_id=market.no_token_id, side="BUY", price=no_avg, size=size),
+            ArbLeg(
+                token_id=market.yes_token_id,
+                side="BUY",
+                price=yes_walk.worst_price,
+                size=size,
+            ),
+            ArbLeg(
+                token_id=market.no_token_id,
+                side="BUY",
+                price=no_walk.worst_price,
+                size=size,
+            ),
         ),
         size=size,
         gross_cost=gross,

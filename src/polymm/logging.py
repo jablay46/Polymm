@@ -20,14 +20,13 @@ _MIN_SECRET_LEN = 8
 
 # Structural patterns that look like secrets regardless of known values.
 _PATTERNS: tuple[re.Pattern[str], ...] = (
-    # 0x-prefixed 32-byte hex (private keys).
+    # 0x-prefixed 32-byte hex (private keys). A 20-byte address or 32-byte
+    # condition id is shorter and is left readable.
     re.compile(r"0x[0-9a-fA-F]{64}"),
     # 64 hex chars without prefix (bare private key).
     re.compile(r"\b[0-9a-fA-F]{64}\b"),
     # PEM blocks.
     re.compile(r"-----BEGIN[^-]+-----.*?-----END[^-]+-----", re.DOTALL),
-    # Long base64/base64url runs (API secrets, passphrases, signatures).
-    re.compile(r"\b[A-Za-z0-9_\-]{40,}\b"),
 )
 
 # Keys whose value should always be redacted when logged as key=value.
@@ -73,7 +72,7 @@ class SecretRedactor:
 
 
 class RedactingFilter(logging.Filter):
-    """Scrubs the record message and args before formatting."""
+    """Scrubs the record message, args, and traceback before formatting."""
 
     def __init__(self, redactor: SecretRedactor) -> None:
         super().__init__()
@@ -87,8 +86,22 @@ class RedactingFilter(logging.Filter):
             message = str(record.msg)
         record.msg = self._redactor.redact(message)
         record.args = ()
-        if record.exc_text:
+
+        # A traceback is rendered by the formatter *after* filters run, so
+        # record.exc_text is still empty here. Render it ourselves, redact,
+        # and hand the formatter pre-redacted text (this is what leaked a
+        # private key that appeared inside an exception message).
+        if record.exc_info:
+            import traceback
+
+            text = "".join(traceback.format_exception(*record.exc_info))
+            record.exc_text = self._redactor.redact(text)
+            record.exc_info = None
+        elif record.exc_text:
             record.exc_text = self._redactor.redact(record.exc_text)
+
+        if record.stack_info:
+            record.stack_info = self._redactor.redact(record.stack_info)
         return True
 
 

@@ -13,6 +13,7 @@ signs the order (see :mod:`polymm.chain.constants`).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -142,6 +143,9 @@ class Market:
     no_token_id: str
     question: str = ""
     neg_risk: bool = False
+    outcome_count: int = 2
+    end_date: str | None = None
+    accepting_orders: bool = True
 
     def __post_init__(self) -> None:
         if not self.condition_id:
@@ -150,7 +154,26 @@ class Market:
             raise PricingError("market needs both yes and no token ids")
         if self.yes_token_id == self.no_token_id:
             raise PricingError("yes and no token ids must differ")
+        if self.outcome_count < 2:
+            raise PricingError("a binary market needs at least two outcomes")
 
     @property
     def token_ids(self) -> tuple[str, str]:
         return (self.yes_token_id, self.no_token_id)
+
+    def hours_to_resolution(self, now: datetime) -> float | None:
+        """Hours until ``end_date``, or None when unknown/unparseable.
+
+        Used to avoid trading a market that is about to resolve, where a
+        one-legged fill would be nearly impossible to unwind.
+        """
+        if not self.end_date:
+            return None
+        raw = self.end_date.replace("Z", "+00:00")
+        try:
+            end = datetime.fromisoformat(raw)
+        except ValueError:
+            return None
+        if end.tzinfo is None:
+            end = end.replace(tzinfo=UTC)
+        return (end - now).total_seconds() / 3600.0

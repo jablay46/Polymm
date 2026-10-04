@@ -64,7 +64,7 @@ def build_paper_bot(
     *,
     bankroll: str = "200",
     fee_rate: str = "0.02",
-    target_size: str = "20",
+    target_size: str = "10",
 ) -> tuple[Bot, PaperExchange, Scenario]:
     scenario = demo_scenario()
     exchange = PaperExchange(balance=D(bankroll), fee_rate=D(fee_rate))
@@ -99,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--interval", type=float, default=1.0)
     parser.add_argument("--bankroll", default="200")
     parser.add_argument("--fee-rate", default="0.02")
-    parser.add_argument("--target-size", default="20")
+    parser.add_argument("--target-size", default="10")
     args = parser.parse_args(argv)
 
     bot, exchange, _ = build_paper_bot(

@@ -80,6 +80,39 @@ def test_marketable_buy_only_fills_visible_size() -> None:
     assert result.filled_size == D("4")
 
 
+def test_fok_kills_instead_of_partial_filling() -> None:
+    """FOK is all-or-nothing; the paper venue must not accept a partial.
+
+    Regression: the paper venue used to book whatever the book could fill,
+    so a strategy bug that assumed full fills was invisible in paper runs.
+    """
+    ex = PaperExchange(balance=D("1000"))
+    ex.set_book(book(asks=[("0.50", "4")]))
+    result = ex.place_order(
+        OrderRequest(token_id="T", side="BUY", price=D("0.60"), size=D("10"), order_type="FOK")
+    )
+    assert result.status == "killed"
+    assert result.filled_size == D("0")
+    assert ex.balance == D("1000")
+    assert ex.position_size("T") == D("0")
+
+
+def test_fak_allows_partial_fill() -> None:
+    ex = PaperExchange(balance=D("1000"))
+    ex.set_book(book(asks=[("0.50", "4")]))
+    result = ex.place_order(
+        OrderRequest(token_id="T", side="BUY", price=D("0.60"), size=D("10"), order_type="FAK")
+    )
+    assert result.filled_size == D("4")
+
+
+def test_order_below_market_minimum_is_rejected() -> None:
+    ex = PaperExchange(balance=D("1000"))
+    ex.set_book(book(asks=[("0.50", "100")]))
+    with pytest.raises(ExchangeError, match="minimum"):
+        ex.place_order(OrderRequest(token_id="T", side="BUY", price=D("0.60"), size=D("0.5")))
+
+
 # ── paper venue: non-crossing limit order ─────────────────────
 
 
@@ -230,22 +263,61 @@ def test_clob_place_order_snaps_price_to_tick_and_posts() -> None:
     from polymm.exchange import ClobExchange
 
     client = FakeClobClient()
-    ex = ClobExchange(client)
+    ex = ClobExchange(client, live_allowed=True)
     result = ex.place_order(OrderRequest(token_id="T", side="BUY", price=D("0.519"), size=D("10")))
     assert result.order_id == "0xabc"
     assert result.status == "matched"
     args, options = client.created[0]
-    # price snapped down to the 0.01 tick
-    assert args.price == pytest.approx(0.51)
+    # A BUY limit is rounded *up* to the 0.01 tick: rounding down could put
+    # the limit below the level we need and stop the order filling.
+    assert args.price == pytest.approx(0.52)
     assert options.neg_risk is False
     assert client.posted[0][0] == {"order": "signed"}
+
+
+def test_order_type_resolved_by_attribute_not_subscript() -> None:
+    """Regression for K2.
+
+    py-clob-client's ``OrderType`` is a plain class of string attributes, not
+    an enum: ``OrderType["FOK"]`` returns a GenericAlias that cannot be
+    serialised, so every live order failed. Resolution must use attributes.
+    """
+    pytest.importorskip("py_clob_client")
+    from py_clob_client.clob_types import OrderType
+
+    from polymm.exchange import _resolve_order_type
+
+    assert _resolve_order_type(OrderType, "FOK") == "FOK"
+    assert _resolve_order_type(OrderType, "GTC") == "GTC"
+    assert _resolve_order_type(OrderType, "IOC") == "FAK"  # documented alias
+
+
+def test_order_type_rejects_unknown() -> None:
+    from polymm.exchange import ExchangeError, _resolve_order_type
+
+    class Fake:
+        FOK = "FOK"
+
+    with pytest.raises(ExchangeError, match="unsupported order type"):
+        _resolve_order_type(Fake, "NOPE")
+
+
+def test_clob_place_order_blocked_when_live_gate_closed() -> None:
+    pytest.importorskip("py_clob_client")
+    from polymm.exchange import ClobExchange
+
+    client = FakeClobClient()
+    ex = ClobExchange(client)  # live_allowed defaults to False
+    with pytest.raises(ExchangeError, match="gate is closed"):
+        ex.place_order(OrderRequest(token_id="T", side="BUY", price=D("0.5"), size=D("1")))
+    assert client.posted == []
 
 
 def test_clob_place_order_wraps_errors() -> None:
     pytest.importorskip("py_clob_client")
     from polymm.exchange import ClobExchange
 
-    ex = ClobExchange(FakeClobClient(fail=True))
+    ex = ClobExchange(FakeClobClient(fail=True), live_allowed=True)
     with pytest.raises(ExchangeError, match="get_order_book failed"):
         ex.place_order(OrderRequest(token_id="T", side="BUY", price=D("0.5"), size=D("1")))
 

@@ -30,6 +30,15 @@ exchange:
   ctf_exchange_address: "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E"
   neg_risk_exchange_address: "0xC5d563A36AE78145C45a50134d48A1215220f80a"
   domain_name: "Polymarket CTF Exchange"
+  # CLOB protocol version. MUST be "2" for live: Polymarket retired V1 on
+  # 2026-04-28 and V1-signed orders are rejected in production. Preflight
+  # refuses to go live while this is "1". See docs/CLOB_V2.md.
+  #
+  # V2 values (swap in after the adapter migration; preflight cross-checks
+  # them against the known V2 deployment):
+  #   domain_version: "2"
+  #   ctf_exchange_address: "0xe111180000d2663c0091e4f400237545b87b996b"
+  #   neg_risk_exchange_address: "0xe2222d279d744050d28e00520010520000310f59"
   domain_version: "1"
 
 # ── Sizing / risk (small-capital defaults) ────────────────────

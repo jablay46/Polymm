@@ -46,21 +46,13 @@ class BookWalk:
     filled: Decimal
     notional: Decimal
     levels_used: int
+    worst_price: Decimal = ZERO
 
     @property
     def avg_price(self) -> Decimal:
         if self.filled == ZERO:
             return ZERO
         return self.notional / self.filled
-
-    @property
-    def worst_price(self) -> Decimal:
-        """Filled notional divided by filled size — i.e. the average.
-
-        Kept as an explicit name because callers reason about "worst price
-        paid" and the average is exactly that after a full walk.
-        """
-        return self.avg_price
 
 
 def _as_decimal(value: object, *, name: str) -> Decimal:
@@ -129,6 +121,7 @@ def walk_book(
     filled = ZERO
     notional = ZERO
     used = 0
+    worst = ZERO
 
     for level in levels:
         if remaining <= ZERO:
@@ -141,8 +134,9 @@ def walk_book(
         notional += take * price
         remaining -= take
         used += 1
+        worst = price
 
-    return BookWalk(filled=filled, notional=notional, levels_used=used)
+    return BookWalk(filled=filled, notional=notional, levels_used=used, worst_price=worst)
 
 
 def fee_per_share(price: object, fee_rate: object) -> Decimal:

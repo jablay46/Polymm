@@ -108,6 +108,47 @@ def test_env_default_keeps_dry_run(tmp_path) -> None:
     assert cfg.bot.live_trading_allowed is False
 
 
+@pytest.mark.parametrize("token", ["y", "t", "f", "n", "garbage", "2"])
+def test_env_bool_rejects_anything_but_true_false(tmp_path, token: str) -> None:
+    """A gate must never be flipped by an ambiguous value.
+
+    Junk values used to parse as False; now only explicit true/false words
+    are accepted and everything else is a hard error (fail closed).
+    """
+    path = _write_config(tmp_path, _valid_exchange({}))
+    with pytest.raises(ValueError, match="not a recognised boolean"):
+        load_config(path, env={ENV_ENABLE_TRADING: token})
+
+
+@pytest.mark.parametrize(
+    ("token", "expected"),
+    [
+        ("true", True),
+        ("TRUE", True),
+        ("on", True),
+        ("1", True),
+        ("yes", True),
+        ("false", False),
+        ("0", False),
+        ("off", False),
+        ("no", False),
+    ],
+)
+def test_env_bool_accepts_documented_words(tmp_path, token: str, expected: bool) -> None:
+    path = _write_config(tmp_path, _valid_exchange({}))
+    cfg = load_config(
+        path,
+        env={ENV_ENABLE_TRADING: token, ENV_MOCK_TRADING: "false" if expected else "true"},
+    )
+    assert cfg.bot.enable_trading is expected
+
+
+def test_absent_env_gate_keeps_config_default(tmp_path) -> None:
+    path = _write_config(tmp_path, _valid_exchange({}))
+    cfg = load_config(path, env={})
+    assert cfg.bot.enable_trading is False  # config default, no env override
+
+
 # ── Credentials never serialise ───────────────────────────────
 
 
@@ -128,7 +169,8 @@ def test_credentials_repr_is_redacted() -> None:
 def test_credentials_come_from_env_only(tmp_path) -> None:
     path = _write_config(tmp_path, _valid_exchange({}))
     cfg = load_config(path, env={ENV_PRIVATE_KEY: "0x" + "cd" * 32, ENV_API_SECRET: "s" * 20})
-    assert cfg.credentials.private_key == "0x" + "cd" * 32
+    assert cfg.credentials.private_key is not None
+    assert cfg.credentials.private_key.get_secret_value() == "0x" + "cd" * 32
     assert cfg.credentials.has_signer() is True
     # api_key absent => no complete L2 triple
     assert cfg.credentials.has_l2() is False

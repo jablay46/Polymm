@@ -20,11 +20,21 @@ from typing import Final
 
 from polymm.chain.constants import (
     SIG_TYPE_EOA,
+    SIG_TYPE_POLY_GNOSIS_SAFE,
     SIG_TYPE_POLY_PROXY,
 )
 from polymm.config import Credentials
 
 REDACTED: Final = "<redacted>"
+
+# Signature type to use for a funder that differs from the signer. Polymarket
+# uses 1 for an EOA-owned proxy and 2 for a Gnosis Safe; we cannot infer which
+# from addresses alone, so callers must state it. Defaulting silently to one of
+# them is how orders get rejected (or, worse, mis-signed).
+_SIG_TYPES: dict[str, int] = {
+    "proxy": SIG_TYPE_POLY_PROXY,
+    "safe": SIG_TYPE_POLY_GNOSIS_SAFE,
+}
 
 
 class WalletError(ValueError):
@@ -84,7 +94,12 @@ class Wallet:
         return self.private_key
 
 
-def build_wallet(creds: Credentials, *, address_of: object | None = None) -> Wallet:
+def build_wallet(
+    creds: Credentials,
+    *,
+    address_of: object | None = None,
+    funder_type: str | None = None,
+) -> Wallet:
     """Construct a :class:`Wallet` from credentials.
 
     Args:
@@ -92,15 +107,18 @@ def build_wallet(creds: Credentials, *, address_of: object | None = None) -> Wal
         address_of: Callable mapping a private key to its address. Injected so
             this module has no hard dependency on a crypto stack at import
             time (unit tests pass a stub; production passes the real one).
+        funder_type: ``"proxy"`` or ``"safe"`` — required when the funder
+            differs from the signer, because the exchange needs the correct
+            signature type and it cannot be derived from the address.
 
     Raises:
-        WalletError: when the key is missing, malformed, or the funder
-            address is invalid.
+        WalletError: when the key is missing/malformed, the funder address is
+            invalid, or a distinct funder was given without ``funder_type``.
     """
     if not creds.private_key:
         raise WalletError("no private key configured (set POLYMM_PRIVATE_KEY)")
 
-    key = creds.private_key.strip()
+    key = creds.private_key.get_secret_value().strip()
     if not _looks_like_private_key(key):
         raise WalletError("private key must be 32 bytes of hex (64 chars, 0x-prefixed)")
 
@@ -109,10 +127,22 @@ def build_wallet(creds: Credentials, *, address_of: object | None = None) -> Wal
 
     signer_address = normalize_address(str(address_of(key)))  # type: ignore[operator]
 
-    # Same address => plain EOA; different => the signer controls a proxy
-    # wallet that holds the funds.
+    # Same address => plain EOA; different => the signer controls a proxy or
+    # Safe wallet that holds the funds.
     funder = normalize_address(creds.funder_address) if creds.funder_address else signer_address
-    signature_type = SIG_TYPE_EOA if funder == signer_address else SIG_TYPE_POLY_PROXY
+    if funder == signer_address:
+        signature_type = SIG_TYPE_EOA
+    else:
+        if funder_type is None:
+            raise WalletError(
+                "funder differs from signer: set funder_type to 'proxy' (type 1) or 'safe' (type 2)"
+            )
+        try:
+            signature_type = _SIG_TYPES[funder_type.strip().lower()]
+        except KeyError as exc:
+            raise WalletError(
+                f"unknown funder_type {funder_type!r}; use 'proxy' or 'safe'"
+            ) from exc
 
     return Wallet(
         address=signer_address,
