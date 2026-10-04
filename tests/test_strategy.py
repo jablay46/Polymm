@@ -172,9 +172,11 @@ def test_book_walk_uses_deep_levels() -> None:
     )
     assert intent is not None
     assert intent.size == D("20")
-    # YES avg = (10*0.40 + 10*0.45)/20 = 0.425
-    assert intent.yes_leg.price == D("0.425")
+    # Cost accounting uses the average; the *limit* uses the deepest level
+    # touched so an FOK can actually reach it.
     assert intent.gross_cost == D("0.425") + D("0.45")
+    assert intent.yes_leg.price == D("0.45")  # worst level, not average
+    assert intent.no_leg.price == D("0.45")
 
 
 def test_insufficient_depth_for_target_is_rejected() -> None:

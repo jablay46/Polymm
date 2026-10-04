@@ -34,6 +34,17 @@ CLOB_AUTH_MESSAGE = "This message attests that I control the given wallet"
 EXCHANGE_DOMAIN_NAME = "Polymarket CTF Exchange"
 EXCHANGE_DOMAIN_VERSION = "1"
 
+# CLOB V2 (live since 2026-04-28). V1 signing was retired; V1-signed orders
+# are rejected with ``order_version_mismatch``. V2 uses the same EIP-712
+# Order type hash and the same ClobAuth domain (still version "1"), but a
+# bumped Exchange domain version ("2"), new exchange contracts, and pUSD as
+# collateral instead of USDC.e. The order *struct* changed too (nonce,
+# feeRateBps, taker removed; timestamp, metadata, builder added) — see
+# docs/CLOB_V2.md. The live adapter does not sign V2 yet, so preflight treats
+# a V1 config as a hard stop for live trading.
+CLOB_V2_EXCHANGE_DOMAIN_VERSION = "2"
+CLOB_V2_ACTIVATION = "2026-04-28"
+
 # EIP-712 Order type. Field order is significant — the type hash embeds it.
 # `side` and `signatureType` are uint8 (NOT uint256); using uint256 produces
 # a different type hash and the exchange will reject the signature.
@@ -100,6 +111,39 @@ def get_contract_config(chain_id: int, neg_risk: bool = False) -> ContractConfig
     config = table.get(chain_id)
     if config is None:
         raise ValueError(f"unsupported chain id: {chain_id}")
+    return config
+
+
+# CLOB V2 contract addresses (Polygon mainnet), live since 2026-04-28.
+# Neg-risk has two exchange deployments in V2; the primary is listed here.
+# pUSD (0xc011a7...) replaces USDC.e as collateral.
+_CONTRACTS_V2: dict[int, ContractConfig] = {
+    CHAIN_POLYGON: ContractConfig(
+        exchange="0xe111180000d2663c0091e4f400237545b87b996b",
+        collateral="0xc011a7e12a19f7b1f670d46f03b03f3342e82dfb",
+        conditional_tokens="0x4D97DCd97eC945f40cF65F87097ACe5EA0476045",
+    ),
+}
+
+_NEG_RISK_CONTRACTS_V2: dict[int, ContractConfig] = {
+    CHAIN_POLYGON: ContractConfig(
+        exchange="0xe2222d279d744050d28e00520010520000310f59",
+        collateral="0xc011a7e12a19f7b1f670d46f03b03f3342e82dfb",
+        conditional_tokens="0x4D97DCd97eC945f40cF65F87097ACe5EA0476045",
+    ),
+}
+
+
+def get_contract_config_v2(chain_id: int, neg_risk: bool = False) -> ContractConfig:
+    """Return the CLOB V2 exchange/collateral/CTF addresses for a chain.
+
+    Raises:
+        ValueError: chain has no V2 deployment (only Polygon mainnet does).
+    """
+    table = _NEG_RISK_CONTRACTS_V2 if neg_risk else _CONTRACTS_V2
+    config = table.get(chain_id)
+    if config is None:
+        raise ValueError(f"no CLOB V2 contracts for chain id: {chain_id}")
     return config
 
 

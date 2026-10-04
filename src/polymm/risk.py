@@ -81,6 +81,7 @@ class RiskState:
     exposure: Decimal = ZERO
     large_trade_times: deque[float] = field(default_factory=deque)
     kill_until: float | None = None
+    daily_loss_halt: bool = False
 
 
 class RiskManager:
@@ -132,13 +133,25 @@ class RiskManager:
         if open_position:
             self.state.open_positions += 1
 
-    def record_close(self, *, notional: Decimal, pnl: Decimal) -> None:
+    def record_close(self, *, notional: Decimal, pnl: Decimal, open_position: bool = True) -> None:
+        """Book a closed trade.
+
+        ``open_position`` must mirror the flag used in the matching
+        :meth:`record_fill`. An unwind closes a leg that was opened with
+        ``open_position=False`` (leg 1 of a basket), so it must not decrement
+        the open-position counter — doing so would under-count real positions.
+        """
         self.state.exposure = max(ZERO, self.state.exposure - notional)
-        self.state.open_positions = max(0, self.state.open_positions - 1)
+        if open_position:
+            self.state.open_positions = max(0, self.state.open_positions - 1)
         self.state.realized_pnl += pnl
         self._roll_day_if_needed()
         self.state.daily_pnl += pnl
         if self.state.daily_pnl <= -self.limits.daily_loss_limit:
+            # A daily loss limit is not a timed cooldown: once breached, the
+            # account is done for the rest of the day (cleared only by the
+            # day rollover). trip() alone would let trading resume in 60s.
+            self.state.daily_loss_halt = True
             self.trip("daily loss limit reached")
 
     def _roll_day_if_needed(self) -> None:
@@ -146,6 +159,7 @@ class RiskManager:
         if self.state.daily_date != today:
             self.state.daily_date = today
             self.state.daily_pnl = ZERO
+            self.state.daily_loss_halt = False
 
     def set_bankroll(self, bankroll: Decimal | float | int) -> None:
         self.state.bankroll = Decimal(str(bankroll))
@@ -166,6 +180,15 @@ class RiskManager:
     ) -> Decision:
         """Approve or deny an order. Denies whenever anything is unknown."""
         now = self._clock()
+
+        # Roll the day first so a stale halt from yesterday cannot block today.
+        self._roll_day_if_needed()
+
+        if self.state.daily_loss_halt:
+            return Decision(
+                False,
+                f"daily loss limit reached ({self.state.daily_pnl}); no trading until the next day",
+            )
 
         if self.is_halted():
             return Decision(False, f"kill switch active: {self.last_trip_reason}")

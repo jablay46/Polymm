@@ -25,14 +25,19 @@ paper path are implemented and tested; live signing is untested on mainnet.
    `src/polymm/data/` and silently drops the source package from git.
    Before committing, confirm `git ls-files src/polymm | wc -l` matches the
    number of modules on disk.
-7. **CI installs only `.[dev]`.** The `chain` extra is optional, so mypy and
-   pytest must pass with it absent (chain-only imports are `importorskip`'d
-   or lazily imported). Keep `[tool.mypy.overrides]` in sync.
+7. **CI tests both with and without the `chain` extra.** The extra is
+   optional, so mypy and pytest must pass with it absent (chain-only
+   imports are `importorskip`'d or lazily imported); the matrix also runs a
+   leg with `--extra chain` to catch regressions when it is present. Keep
+   `[tool.mypy.overrides]` in sync. `types-PyYAML` is a locked dev
+   dependency (config.py imports `yaml` under strict mypy) — never install
+   it ad-hoc, because `uv sync --locked` would remove it.
 
 ## Commands
 
 ```bash
 uv venv && uv pip install -e ".[dev,chain]" types-PyYAML
+uv sync --locked --extra dev            # base + dev (CI: chain extra leg adds --extra chain)
 uv run pytest                 # tiers 1+2 (default; no secrets)
 uv run pytest --cov           # coverage gate is 90%
 uv run ruff check . && uv run ruff format --check .

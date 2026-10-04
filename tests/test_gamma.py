@@ -49,6 +49,28 @@ def test_parse_market_handles_real_lists_too() -> None:
     assert m.no_token_id == "222"
 
 
+def test_parse_market_rejects_multi_outcome() -> None:
+    """Only true binaries can be complete-set arbitraged.
+
+    Buying the first two tokens of a 3-outcome market is not a complete set
+    and would report a fake edge, so it must be refused.
+    """
+    with pytest.raises(GammaError, match="only binary markets"):
+        parse_market(
+            raw_market(
+                clobTokenIds=json.dumps(["111", "222", "333"]),
+                outcomes=json.dumps(["Yes", "No", "Maybe"]),
+            )
+        )
+
+
+def test_parse_market_reads_end_date_and_accepting_orders() -> None:
+    m = parse_market(raw_market(endDate="2026-12-31T00:00:00Z", acceptingOrders=False))
+    assert m.end_date == "2026-12-31T00:00:00Z"
+    assert m.accepting_orders is False
+    assert m.outcome_count == 2
+
+
 def test_parse_market_maps_labels_not_positions() -> None:
     # A market that reports No first must not be mislabelled.
     m = parse_market(

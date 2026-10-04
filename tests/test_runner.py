@@ -130,3 +130,62 @@ def test_paper_run_reports_positive_edge() -> None:
     assert len(report.filled) == 1
     assert report.realized_edge_usd > 0
     assert not report.naked
+
+
+def test_market_is_not_re_fired_after_a_fill() -> None:
+    """A held complete set must not be re-bought every cycle (dedup)."""
+    from polymm.config import RiskConfig
+    from polymm.risk import RiskLimits, RiskManager
+
+    ex = arb_exchange()
+    risk = RiskManager(RiskLimits.from_config(RiskConfig()), bankroll=D("1000"))
+    bot = Bot(
+        ex,
+        risk,
+        [mk_market("c", "Y", "N")],
+        strategy_config=ArbConfig(fee_rate=D("0.02"), target_size=D("5")),
+    )
+    first = bot.scan_once()
+    assert len(first.filled) == 1
+    second = bot.scan_once()
+    assert second.intents_found == 0
+    assert second.skipped_duplicates == 1
+    assert second.executions == []
+
+
+def test_market_resolving_soon_is_skipped() -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from polymm.config import RiskConfig
+    from polymm.risk import RiskLimits, RiskManager
+
+    end = (datetime.now(UTC) + timedelta(minutes=30)).isoformat()
+    market = Market(condition_id="c", yes_token_id="Y", no_token_id="N", end_date=end)
+    ex = arb_exchange()
+    risk = RiskManager(RiskLimits.from_config(RiskConfig()), bankroll=D("1000"))
+    bot = Bot(
+        ex,
+        risk,
+        [market],
+        strategy_config=ArbConfig(fee_rate=D("0.02"), target_size=D("5")),
+        min_hours_to_resolution=1.0,
+    )
+    report = bot.scan_once()
+    assert report.intents_found == 0
+    assert report.executions == []
+
+
+def test_market_not_accepting_orders_is_skipped() -> None:
+    from polymm.config import RiskConfig
+    from polymm.risk import RiskLimits, RiskManager
+
+    market = Market(condition_id="c", yes_token_id="Y", no_token_id="N", accepting_orders=False)
+    ex = arb_exchange()
+    risk = RiskManager(RiskLimits.from_config(RiskConfig()), bankroll=D("1000"))
+    bot = Bot(
+        ex,
+        risk,
+        [market],
+        strategy_config=ArbConfig(fee_rate=D("0.02"), target_size=D("5")),
+    )
+    assert bot.scan_once().intents_found == 0

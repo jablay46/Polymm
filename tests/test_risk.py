@@ -119,22 +119,26 @@ def test_depth_floor() -> None:
 # ── daily loss kill switch ────────────────────────────────────
 
 
-def test_daily_loss_limit_trips_kill_switch() -> None:
+def test_daily_loss_limit_halts_for_the_day() -> None:
     mgr, _ = make_manager(daily_loss_limit_usd=25)
     mgr.record_close(notional=D("10"), pnl=D("-30"))
     assert mgr.is_halted()
     d = mgr.evaluate_order(**ok_order())
     assert not d.allowed
-    assert "kill switch" in d.reason
+    assert "daily loss" in d.reason
 
 
-def test_kill_switch_expires_after_duration() -> None:
+def test_daily_loss_halt_does_not_expire_with_trip_duration() -> None:
+    # Regression: the daily loss limit used to be a 60s cooldown, so trading
+    # silently resumed a minute after a limit breach.
     mgr, clock = make_manager(daily_loss_limit_usd=25, trip_duration_secs=60)
     mgr.record_close(notional=D("10"), pnl=D("-30"))
     assert mgr.is_halted()
     clock.advance(61)
-    assert not mgr.is_halted()
-    assert mgr.evaluate_order(**ok_order()).allowed
+    assert not mgr.is_halted()  # the timed cooldown has elapsed...
+    d = mgr.evaluate_order(**ok_order())
+    assert not d.allowed  # ...but the daily halt still blocks orders
+    assert "daily loss" in d.reason
 
 
 def test_daily_loss_resets_on_new_day() -> None:

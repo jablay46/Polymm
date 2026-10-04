@@ -74,6 +74,10 @@ class PaperExchange:
     def place_order(self, request: OrderRequest) -> OrderResult:
         book = self.get_order_book(request.token_id)
         side = request.side.upper()
+
+        if book.min_order_size and request.size < book.min_order_size:
+            raise ExchangeError(f"size {request.size} below market minimum {book.min_order_size}")
+
         levels = book.levels_for(side)
         if not levels:
             raise ExchangeError(f"book for {request.token_id} has no {side} liquidity")
@@ -96,6 +100,18 @@ class PaperExchange:
         walk = walk_book(crossing, request.size)
         if walk.filled <= ZERO:
             raise ExchangeError("order filled zero size")
+
+        # FOK is all-or-nothing: if the book cannot fill the whole size, the
+        # order is killed and nothing changes. Accepting the partial (the old
+        # behaviour) left an unintended position and hid execution bugs.
+        if request.order_type.upper() == "FOK" and walk.filled < request.size:
+            self._seq += 1
+            return OrderResult(
+                order_id=f"paper-{self._seq}",
+                status="killed",
+                filled_size=ZERO,
+                avg_price=ZERO,
+            )
 
         fee = fee_per_share(walk.avg_price, self.fee_rate) * walk.filled
 

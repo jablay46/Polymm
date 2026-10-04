@@ -66,7 +66,7 @@ def main(argv: list[str] | None = None) -> int:
     paper.add_argument("--interval", type=float, default=1.0)
     paper.add_argument("--bankroll", default="200")
     paper.add_argument("--fee-rate", default="0.02")
-    paper.add_argument("--target-size", default="20")
+    paper.add_argument("--target-size", default="10")
     paper.set_defaults(func=_cmd_paper)
 
     pre = sub.add_parser("preflight", help="check a config before going live")

@@ -11,7 +11,13 @@ from decimal import Decimal
 
 import pytest
 
-from polymm.exchange import ExchangeError, OrderRequest
+from polymm.exchange import (
+    ExchangeError,
+    OrderRequest,
+    _parse_order_response,
+    _resolve_order_type,
+    _to_decimal,
+)
 from polymm.market import OrderBook
 from polymm.paper import PaperExchange
 from polymm.pricing import Level
@@ -78,6 +84,39 @@ def test_marketable_buy_only_fills_visible_size() -> None:
     result = ex.place_order(OrderRequest(token_id="T", side="BUY", price=D("0.60"), size=D("10")))
     # Only 4 shares are available; no phantom liquidity is invented.
     assert result.filled_size == D("4")
+
+
+def test_fok_kills_instead_of_partial_filling() -> None:
+    """FOK is all-or-nothing; the paper venue must not accept a partial.
+
+    Regression: the paper venue used to book whatever the book could fill,
+    so a strategy bug that assumed full fills was invisible in paper runs.
+    """
+    ex = PaperExchange(balance=D("1000"))
+    ex.set_book(book(asks=[("0.50", "4")]))
+    result = ex.place_order(
+        OrderRequest(token_id="T", side="BUY", price=D("0.60"), size=D("10"), order_type="FOK")
+    )
+    assert result.status == "killed"
+    assert result.filled_size == D("0")
+    assert ex.balance == D("1000")
+    assert ex.position_size("T") == D("0")
+
+
+def test_fak_allows_partial_fill() -> None:
+    ex = PaperExchange(balance=D("1000"))
+    ex.set_book(book(asks=[("0.50", "4")]))
+    result = ex.place_order(
+        OrderRequest(token_id="T", side="BUY", price=D("0.60"), size=D("10"), order_type="FAK")
+    )
+    assert result.filled_size == D("4")
+
+
+def test_order_below_market_minimum_is_rejected() -> None:
+    ex = PaperExchange(balance=D("1000"))
+    ex.set_book(book(asks=[("0.50", "100")]))
+    with pytest.raises(ExchangeError, match="minimum"):
+        ex.place_order(OrderRequest(token_id="T", side="BUY", price=D("0.60"), size=D("0.5")))
 
 
 # ── paper venue: non-crossing limit order ─────────────────────
@@ -225,27 +264,127 @@ def test_clob_get_order_book_wraps_errors() -> None:
         ex.get_order_book("T")
 
 
+def test_parse_order_response_matched_buy() -> None:
+    """A matched BUY spends makingAmount (USDC) for takingAmount shares."""
+    result = _parse_order_response(
+        {
+            "orderID": "0xabc",
+            "status": "matched",
+            "success": True,
+            "makingAmount": "5.2",
+            "takingAmount": "10",
+        }
+    )
+    assert result.order_id == "0xabc"
+    assert result.is_filled
+    assert result.filled_size == D("10")
+    assert result.avg_price == D("0.52")
+
+
+def test_parse_order_response_accepts_camel_case_order_id() -> None:
+    result = _parse_order_response({"orderId": "0xdef", "status": "live"})
+    assert result.order_id == "0xdef"
+    assert not result.is_filled
+
+
+def test_parse_order_response_rejected_raises() -> None:
+    with pytest.raises(ExchangeError, match="order rejected by CLOB"):
+        _parse_order_response({"status": "rejected", "success": False, "errorMsg": "nope"})
+
+
+def test_parse_order_response_rejected_but_filled_is_kept() -> None:
+    # success=false with a real match must not raise: the fill already happened.
+    result = _parse_order_response(
+        {"status": "matched", "success": False, "makingAmount": "1", "takingAmount": "2"}
+    )
+    assert result.filled_size == D("2")
+
+
+def test_parse_order_response_rejects_non_dict() -> None:
+    with pytest.raises(ExchangeError, match="unexpected order response type"):
+        _parse_order_response("not-a-dict")
+
+
+def test_to_decimal_handles_empty_and_bad_values() -> None:
+    assert _to_decimal(None) == D("0")
+    assert _to_decimal("") == D("0")
+    assert _to_decimal("1.5") == D("1.5")
+    with pytest.raises(ExchangeError, match="non-numeric amount"):
+        _to_decimal("abc")
+
+
 def test_clob_place_order_snaps_price_to_tick_and_posts() -> None:
     pytest.importorskip("py_clob_client")
     from polymm.exchange import ClobExchange
 
     client = FakeClobClient()
-    ex = ClobExchange(client)
+    ex = ClobExchange(client, live_allowed=True)
     result = ex.place_order(OrderRequest(token_id="T", side="BUY", price=D("0.519"), size=D("10")))
     assert result.order_id == "0xabc"
     assert result.status == "matched"
     args, options = client.created[0]
-    # price snapped down to the 0.01 tick
-    assert args.price == pytest.approx(0.51)
+    # A BUY limit is rounded *up* to the 0.01 tick: rounding down could put
+    # the limit below the level we need and stop the order filling.
+    assert args.price == pytest.approx(0.52)
     assert options.neg_risk is False
     assert client.posted[0][0] == {"order": "signed"}
+
+
+def test_order_type_resolved_by_attribute_not_subscript() -> None:
+    """Regression for K2.
+
+    py-clob-client's ``OrderType`` is a plain class of string attributes, not
+    an enum: ``OrderType["FOK"]`` returns a GenericAlias that cannot be
+    serialised, so every live order failed. Resolution must use attributes.
+    """
+    pytest.importorskip("py_clob_client")
+    from py_clob_client.clob_types import OrderType
+
+    from polymm.exchange import _resolve_order_type
+
+    assert _resolve_order_type(OrderType, "FOK") == "FOK"
+    assert _resolve_order_type(OrderType, "GTC") == "GTC"
+    assert _resolve_order_type(OrderType, "IOC") == "FAK"  # documented alias
+
+
+def test_order_type_rejects_unknown() -> None:
+    from polymm.exchange import ExchangeError, _resolve_order_type
+
+    class Fake:
+        FOK = "FOK"
+
+    with pytest.raises(ExchangeError, match="unsupported order type"):
+        _resolve_order_type(Fake, "NOPE")
+
+
+def test_order_type_resolves_alias_without_chain() -> None:
+    class Fake:
+        FOK = "FOK"
+        GTC = "GTC"
+        GTD = "GTD"
+        FAK = "FAK"
+
+    assert _resolve_order_type(Fake, "FOK") == "FOK"
+    assert _resolve_order_type(Fake, "ioc") == "FAK"  # alias, case-insensitive
+
+
+def test_clob_place_order_blocked_when_live_gate_closed() -> None:
+    # The live gate is checked before any py_clob_client import, so this
+    # needs no chain extra.
+    from polymm.exchange import ClobExchange
+
+    client = FakeClobClient()
+    ex = ClobExchange(client)  # live_allowed defaults to False
+    with pytest.raises(ExchangeError, match="gate is closed"):
+        ex.place_order(OrderRequest(token_id="T", side="BUY", price=D("0.5"), size=D("1")))
+    assert client.posted == []
 
 
 def test_clob_place_order_wraps_errors() -> None:
     pytest.importorskip("py_clob_client")
     from polymm.exchange import ClobExchange
 
-    ex = ClobExchange(FakeClobClient(fail=True))
+    ex = ClobExchange(FakeClobClient(fail=True), live_allowed=True)
     with pytest.raises(ExchangeError, match="get_order_book failed"):
         ex.place_order(OrderRequest(token_id="T", side="BUY", price=D("0.5"), size=D("1")))
 
@@ -258,6 +397,28 @@ def test_clob_cancel_and_cancel_all() -> None:
     assert ex.cancel("0x1") is True
     ex.cancel_all()
     assert client.cancelled == ["0x1", "*"]
+
+
+def test_clob_cancel_wraps_errors() -> None:
+    from polymm.exchange import ClobExchange
+
+    class BadClient(FakeClobClient):
+        def cancel(self, order_id: str) -> None:
+            raise RuntimeError("nope")
+
+    with pytest.raises(ExchangeError, match="cancel failed"):
+        ClobExchange(BadClient()).cancel("0x1")
+
+
+def test_clob_cancel_all_wraps_errors() -> None:
+    from polymm.exchange import ClobExchange
+
+    class BadClient(FakeClobClient):
+        def cancel_all(self) -> None:
+            raise RuntimeError("nope")
+
+    with pytest.raises(ExchangeError, match="cancel_all failed"):
+        ClobExchange(BadClient()).cancel_all()
 
 
 def test_clob_balance_scales_from_six_decimals() -> None:

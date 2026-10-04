@@ -63,6 +63,15 @@ def parse_market(raw: dict[str, Any]) -> Market:
     if len(tokens) < 2:
         raise GammaError(f"market {raw.get('id')!r} has no clobTokenIds pair")
 
+    # Complete-set arbitrage needs a *true* binary market: buying the first
+    # two tokens of a 3+ outcome market is not a complete set and would show
+    # a fake edge. Refuse anything that is not exactly two outcomes.
+    if len(outcomes) != 2:
+        raise GammaError(
+            f"market {raw.get('id')!r} has {len(outcomes)} outcomes; "
+            "only binary markets are tradable by complete-set arbitrage"
+        )
+
     condition_id = raw.get("conditionId") or raw.get("condition_id") or ""
     if not condition_id:
         raise GammaError(f"market {raw.get('id')!r} has no conditionId")
@@ -70,6 +79,8 @@ def parse_market(raw: dict[str, Any]) -> Market:
     yes_index, no_index = _yes_no_indices(outcomes)
     yes_token, no_token = str(tokens[yes_index]), str(tokens[no_index])
     neg_risk = bool(raw.get("negRisk") or raw.get("negRiskAugmented"))
+    accepting = raw.get("acceptingOrders")
+    accepting_orders = True if accepting is None else bool(accepting)
 
     return Market(
         condition_id=str(condition_id),
@@ -77,6 +88,9 @@ def parse_market(raw: dict[str, Any]) -> Market:
         no_token_id=no_token,
         question=str(raw.get("question") or raw.get("title") or ""),
         neg_risk=neg_risk,
+        outcome_count=2,
+        end_date=str(raw.get("endDate")) if raw.get("endDate") else None,
+        accepting_orders=accepting_orders,
     )
 
 

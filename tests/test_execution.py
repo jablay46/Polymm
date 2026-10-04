@@ -90,7 +90,11 @@ def intent_for(yes_ask: str, no_ask: str, size: str = "100") -> ArbIntent:
 
 
 def risk_mgr(**overrides) -> RiskManager:
-    cfg = RiskConfig(**overrides)  # type: ignore[arg-type]
+    # Caps are sized so a 2-leg basket (~0.94 * 100) fits: the executor now
+    # checks the *whole basket* against the per-order cap, not each leg.
+    params = {"max_order_bankroll_fraction": 0.5, "max_total_bankroll_fraction": 1.0}
+    params.update(overrides)
+    cfg = RiskConfig(**params)  # type: ignore[arg-type]
     return RiskManager(RiskLimits.from_config(cfg), bankroll=D("1000"))
 
 
@@ -235,27 +239,39 @@ def test_unwind_disabled_holds_naked() -> None:
     assert result.status is ExecutionStatus.UNHEDGED
 
 
-def test_risk_denies_second_leg_unwinds() -> None:
+def test_risk_denies_oversized_basket_before_any_order() -> None:
+    # The basket is checked as a whole up front. A cap that each leg would
+    # pass but the pair would not must deny *before* leg 1 leaves.
+    intent = intent_for("0.46", "0.48")  # basket notional ~94
+    ex = setup_exchange(intent)
+    mgr = risk_mgr(max_order_bankroll_fraction=0.05)  # cap 50 < 94
+    result = execute_intent(ex, intent, mgr)
+    assert result.status is ExecutionStatus.ABORTED
+    assert ex.calls == []
+    assert "risk denied basket" in result.note
+    assert not result.holds_naked_position
+
+
+def test_second_book_error_aborts_before_first_leg() -> None:
+    # A transient error reading the *second* book must abort before any
+    # exposure is taken, not after leg 1 has filled.
     intent = intent_for("0.46", "0.48")
     ex = setup_exchange(intent)
     ex.script("YES", "BUY", filled("y1", "100", "0.46"))
-    ex.script("YES", "SELL", filled("s1", "100", "0.40"))
 
-    # Bankroll drops below the floor between legs: use a manager whose
-    # bankroll we shrink after the first leg by tripping on loss.
-    mgr = risk_mgr()
-    # Patch: trip the kill switch right after first leg via record_close hook.
-    original = mgr.record_fill
+    real = ex.get_order_book
 
-    def trip_after_first(**kwargs):
-        original(**kwargs)
-        mgr.trip("test halt")
+    def flaky(token_id: str) -> OrderBook:
+        if token_id == "NO":
+            raise ExchangeError("network blip")
+        return real(token_id)
 
-    mgr.record_fill = trip_after_first  # type: ignore[method-assign]
+    ex.get_order_book = flaky  # type: ignore[method-assign]
 
-    result = execute_intent(ex, intent, mgr)
-    assert result.status is ExecutionStatus.UNWOUND
-    assert "risk denied second leg" in result.note
+    result = execute_intent(ex, intent, risk_mgr())
+    assert result.status is ExecutionStatus.ABORTED
+    assert ex.calls == []
+    assert "book unavailable" in result.note
 
 
 def test_partial_unwind_flags_unhedged() -> None:

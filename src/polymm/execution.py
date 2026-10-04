@@ -91,18 +91,33 @@ def execute_intent(
     legs = sorted(intent.legs, key=lambda leg: leg.price)
     first, second = legs[0], legs[1]
 
-    # ── risk gate + first leg ────────────────────────────────
-    depth = _depth_usd(exchange, first.token_id, "BUY", cfg.depth_levels)
+    # ── basket-level risk gate ───────────────────────────────
+    # Both legs are one economic position, so they are judged together
+    # *before* any order leaves: a per-leg check would let a basket through
+    # at 2x the cap and could force a losing unwind after leg 1 filled.
+    # Both depth reads are also done here, inside the guard, so a transient
+    # network error aborts before any exposure is taken.
+    try:
+        first_depth = _depth_usd(exchange, first.token_id, "BUY", cfg.depth_levels)
+        second_depth = _depth_usd(exchange, second.token_id, "BUY", cfg.depth_levels)
+    except ExchangeError as exc:
+        return ExecutionResult(
+            status=ExecutionStatus.ABORTED,
+            intent=intent,
+            note=f"book unavailable before first leg: {exc}",
+        )
+
+    basket_notional = first.price * first.size + second.price * second.size
     decision = risk.evaluate_order(
-        notional=first.price * first.size,
-        size_shares=first.size,
-        depth_usd=depth,
+        notional=basket_notional,
+        size_shares=max(first.size, second.size),
+        depth_usd=min(first_depth, second_depth),
     )
     if not decision.allowed:
         return ExecutionResult(
             status=ExecutionStatus.ABORTED,
             intent=intent,
-            note=f"risk denied first leg: {decision.reason}",
+            note=f"risk denied basket: {decision.reason}",
         )
 
     try:
@@ -133,24 +148,10 @@ def execute_intent(
 
     risk.record_fill(notional=first.price * first.size, open_position=False)
 
-    # ── risk gate + second leg ───────────────────────────────
-    depth = _depth_usd(exchange, second.token_id, "BUY", cfg.depth_levels)
-    decision = risk.evaluate_order(
-        notional=second.price * second.size,
-        size_shares=second.size,
-        depth_usd=depth,
-    )
-    if not decision.allowed:
-        return _unwind_or_hold(
-            exchange,
-            intent,
-            risk,
-            first_result,
-            first,
-            cfg,
-            f"risk denied second leg: {decision.reason}",
-        )
-
+    # ── second leg ───────────────────────────────────────────
+    # No fresh depth read here: it was validated up front, and doing I/O
+    # between the two legs only widens the one-legged window. The order is
+    # placed inside the guard so any failure still unwinds leg 1.
     try:
         second_result = exchange.place_order(
             OrderRequest(
@@ -207,6 +208,10 @@ def _unwind_or_hold(
         bid = book.best_bid
         if bid is None:
             raise ExchangeError("no bid to unwind into")
+        if book.min_order_size and first_result.filled_size < book.min_order_size:
+            raise ExchangeError(
+                f"unwind size {first_result.filled_size} below market minimum {book.min_order_size}"
+            )
         unwind = exchange.place_order(
             OrderRequest(
                 token_id=first_leg.token_id,
@@ -236,7 +241,9 @@ def _unwind_or_hold(
 
     # Realised loss = bought at first.price, sold at unwind.avg_price, minus fees.
     loss = (first_result.avg_price - unwind.avg_price) * unwind.filled_size
-    risk.record_close(notional=first_leg.price * first_leg.size, pnl=-loss)
+    # Leg 1 was recorded with open_position=False, so its close must not
+    # decrement the open-position counter either.
+    risk.record_close(notional=first_leg.price * first_leg.size, pnl=-loss, open_position=False)
     return ExecutionResult(
         status=ExecutionStatus.UNWOUND,
         intent=intent,

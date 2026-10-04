@@ -5,8 +5,9 @@ short-horizon crypto Up/Down markets, with a liquidity-reward overlay.
 Designed to run on a small bankroll ($200–$500) with hard risk caps.
 
 > **Status: the strategy, execution, risk, and paper-trading path are
-> implemented and tested. Live order signing exists but has not been
-> exercised against mainnet — run paper mode first.**
+> implemented and tested. Live order signing targets CLOB V1, which
+> Polymarket retired on 2026-04-28 — preflight therefore refuses to go live
+> until the adapter is migrated. Run paper mode; see `docs/CLOB_V2.md`.**
 
 ## Quick start (no keys, no network)
 
@@ -33,8 +34,10 @@ uv run python -m polymm preflight config.example.yaml --bankroll 300
 ```
 
 Any `[ERROR]` line means the bot refuses to trade. Checks: dual-flag live
-gate, signer present, known chain contracts, sane risk caps, minimum
-bankroll. `[WARN]` lines are surfaced but do not stop the run.
+gate, signer present, known chain contracts **and that the configured
+addresses match the deployment for the configured CLOB version**, sane risk
+caps, minimum bankroll, and a hard stop on the retired CLOB V1 protocol.
+`[WARN]` lines are surfaced but do not stop the run.
 
 ## Strategy: complete-set arbitrage
 

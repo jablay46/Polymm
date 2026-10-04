@@ -18,9 +18,15 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 REDACTED = "<redacted>"
+
+# Values accepted as boolean True/False from the environment. Anything else
+# (including empty string and near-misses like "y", "t", "flase") is a hard
+# error: silently treating a typo as False is how a live gate fails open.
+_ENV_TRUE = {"1", "true", "yes", "on"}
+_ENV_FALSE = {"0", "false", "no", "off"}
 
 # Environment variable names for credentials. Kept in one place so the
 # redaction tests and the loader cannot drift apart.
@@ -103,6 +109,11 @@ class RiskConfig(_Base):
 class StrategyConfig(_Base):
     complete_set_min_edge: float = Field(default=0.01, ge=0.0, lt=1.0)
     max_basket_cost: float = Field(default=0.99, gt=0.0, le=1.0)
+    max_leg_price: float = Field(default=0.985, gt=0.0, le=1.0)
+    max_spread: float = Field(default=0.08, ge=0.0, le=1.0)
+    fee_rate: float = Field(default=0.02, ge=0.0, le=1.0)
+    target_size: float = Field(default=100.0, gt=0.0)
+    min_visible_size: float = Field(default=1.0, ge=0.0)
     improve_ticks: int = Field(default=1, ge=0)
     max_skew_ticks: int = Field(default=1, ge=0)
     imbalance_shares_for_max_skew: float = Field(default=200.0, gt=0.0)
@@ -119,16 +130,19 @@ class Credentials(BaseModel):
     """Wallet/API secrets.
 
     Held only in memory, sourced from the environment, never serialised.
-    ``repr`` is redacted so an accidental log/exception cannot leak a key.
+    Values are :class:`~pydantic.SecretStr`, so ``model_dump()`` and
+    ``model_dump_json()`` emit ``**********`` rather than the secret; ``repr``
+    is additionally redacted so an accidental log or exception cannot leak a
+    key.
     """
 
     model_config = ConfigDict(frozen=True)
 
-    private_key: str | None = None
+    private_key: SecretStr | None = None
     funder_address: str | None = None
-    api_key: str | None = None
-    api_secret: str | None = None
-    api_passphrase: str | None = None
+    api_key: SecretStr | None = None
+    api_secret: SecretStr | None = None
+    api_passphrase: SecretStr | None = None
 
     def __repr__(self) -> str:
         return (
@@ -166,22 +180,42 @@ class Config(BaseModel):
 
 
 def _env_bool_in(src: Mapping[str, str], name: str) -> bool | None:
-    """Parse a boolean from ``src[name]``; return None when unset."""
+    """Parse a boolean from ``src[name]``.
+
+    Returns ``None`` when the variable is unset *or empty* (an empty value
+    is treated as "not configured", so ``NAME=`` in a .env file cannot
+    silently flip a gate). Any non-empty value that is not a recognised
+    boolean raises :class:`ValueError` — fail closed, never guess.
+    """
     raw = src.get(name)
     if raw is None:
         return None
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
+    token = raw.strip().lower()
+    if token == "":
+        return None
+    if token in _ENV_TRUE:
+        return True
+    if token in _ENV_FALSE:
+        return False
+    raise ValueError(
+        f"{name}={raw!r} is not a recognised boolean (use one of: {sorted(_ENV_TRUE | _ENV_FALSE)})"
+    )
 
 
 def load_credentials(env: Mapping[str, str] | None = None) -> Credentials:
     """Read credentials from the environment (or an injected mapping)."""
     src = os.environ if env is None else env
+
+    def secret(name: str) -> SecretStr | None:
+        value = src.get(name)
+        return SecretStr(value) if value else None
+
     return Credentials(
-        private_key=src.get(ENV_PRIVATE_KEY) or None,
+        private_key=secret(ENV_PRIVATE_KEY),
         funder_address=src.get(ENV_FUNDER_ADDRESS) or None,
-        api_key=src.get(ENV_API_KEY) or None,
-        api_secret=src.get(ENV_API_SECRET) or None,
-        api_passphrase=src.get(ENV_API_PASSPHRASE) or None,
+        api_key=secret(ENV_API_KEY),
+        api_secret=secret(ENV_API_SECRET),
+        api_passphrase=secret(ENV_API_PASSPHRASE),
     )
 
 
@@ -209,6 +243,7 @@ def load_config(
 
     Raises:
         FileNotFoundError: the config path does not exist.
+        ValueError: an env gate value is not a recognised boolean.
         pydantic.ValidationError: the config is malformed (fail-closed).
     """
     raw: dict[str, Any] = {}
@@ -221,7 +256,22 @@ def load_config(
             raise ValueError(f"config root must be a mapping, got {type(loaded).__name__}")
         raw = loaded
 
-    bot = BotConfig(**raw.get("bot", {}))
+    # Credentials come from the environment only. A `credentials:` block in
+    # YAML is ignored by design, so say so loudly rather than silently
+    # dropping what the operator may believe is the source of truth.
+    if "credentials" in raw:
+        import warnings
+
+        warnings.warn(
+            "config key 'credentials' is ignored; secrets are read from the "
+            "environment only (POLYMM_PRIVATE_KEY, POLYMM_API_*).",
+            stacklevel=2,
+        )
+
+    bot_raw = raw.get("bot") or {}
+    if not isinstance(bot_raw, dict):
+        raise ValueError(f"config 'bot' must be a mapping, got {type(bot_raw).__name__}")
+    bot = BotConfig(**bot_raw)
     bot = _apply_env_gates(bot, env)
 
     # Build from the raw mapping so pydantic validates every section and
