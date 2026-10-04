@@ -21,8 +21,8 @@ jobs:
         python: ["3.11", "3.12"]
         extras: ["", "--extra chain"]      # tanpa dan dengan extra (aturan #7)
     steps:
-      - uses: actions/checkout@v4           # pin ke SHA (lihat catatan)
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
         with:
           python-version: ${{ matrix.python }}
           enable-cache: true
@@ -40,16 +40,20 @@ jobs:
     timeout-minutes: 5
     permissions: { contents: read, pull-requests: read }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with: { fetch-depth: 0 }            # scan seluruh riwayat
-      - uses: gitleaks/gitleaks-action@v2
-        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e  # v3.0.0
+        env:
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          # Repo config is ".gitleaks.toml" (dot-prefixed); the action only
+          # auto-detects "gitleaks.toml", so point it explicitly.
+          GITLEAKS_CONFIG: .gitleaks.toml
 
   audit:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
       - run: uv export --locked --no-hashes --no-emit-project --extra chain -o /tmp/req.txt
       - run: uvx pip-audit --disable-pip --no-deps -r /tmp/req.txt
