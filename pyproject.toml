@@ -41,6 +41,11 @@ dev = [
     "ruff>=0.5",
     "mypy>=1.10",
     "pre-commit>=3.7",
+    # Type stubs for PyYAML: config.py does `import yaml` and mypy runs in
+    # strict mode, so the stubs must be a locked dev dependency. Installing
+    # them ad-hoc (e.g. `uv pip install types-PyYAML`) breaks under
+    # `uv sync --locked`, which would remove anything not in the lockfile.
+    "types-PyYAML>=6.0",
 ]
 
 [tool.hatch.build.targets.wheel]
