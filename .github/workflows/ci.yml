@@ -1,17 +1,55 @@
 name: CI
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  push: { branches: [main] }
+  pull_request: { branches: [main] }
+  schedule: [{ cron: "0 3 * * 1" }]   # mingguan: CVE baru muncul tanpa ada commit
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+        extras: ["", "--extra chain"]      # tanpa dan dengan extra (aturan #7)
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4           # pin ke SHA (lihat catatan)
       - uses: astral-sh/setup-uv@v5
-      - run: uv venv && uv pip install -e ".[dev]" types-PyYAML
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+      - run: uv sync --locked --extra dev ${{ matrix.extras }}
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy
-      - run: uv run pytest --cov
+      - name: Pastikan extra chain benar-benar terpasang
+        if: matrix.extras != ''
+        run: uv run python -c "import py_clob_client, eth_account, eth_utils, poly_eip712_structs"
+      - run: uv run pytest --cov -rs
+
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: { contents: read, pull-requests: read }
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }            # scan seluruh riwayat
+      - uses: gitleaks/gitleaks-action@v2
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv export --locked --no-hashes --no-emit-project --extra chain -o /tmp/req.txt
+      - run: uvx pip-audit --disable-pip --no-deps -r /tmp/req.txt
